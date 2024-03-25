@@ -25,7 +25,37 @@ type ResultStep = {
   result: string;
 };
 
-// Function to extract data from selected frames
+const testScenarioNameRegex = new RegExp(/(test\sscenario|\d)/, "i");
+const COLUMN_HEADERS = [
+  "Test Group",
+  "Test Scenario ID",
+  "Steps - Question ID: Question text: Selected Response",
+  "Expected Result",
+  "Status",
+  "Actioned By",
+  "Date",
+  "Notes",
+];
+
+// Function to extract data a group of test scenarios
+async function extractDataFromGroupFrame(frames: readonly SceneNode[]) {
+  // Array to store data from all frames
+  let testScenarios: SceneNode[] = [];
+
+  // Iterate through selected frames
+  for (const frame of frames) {
+    testScenarios = (frame as SectionNode).children
+      .filter((node) => node.type === "SECTION")
+      .sort((a, b) => a.y - b.y);
+    // ensures the sections are sorted top down
+  }
+
+  console.log("scenarios", testScenarios);
+
+  return await extractDataFromTestFrames(testScenarios);
+}
+
+// Function to extract data from selected testframes
 async function extractDataFromTestFrames(frames: readonly SceneNode[]) {
   // Array to store data from all frames
   const data: FrameData[] = [];
@@ -35,9 +65,9 @@ async function extractDataFromTestFrames(frames: readonly SceneNode[]) {
 
   // Iterate through selected frames
   for (const frame of frames) {
+    // ensure we are dealing with section nodes
     if (frame.type === "SECTION" && frame.name.includes("test scenario")) {
-      // Ensure it's a frame or group
-      // Iterate through all text nodes in the frame
+      // Iterate through all text nodes in the frame (to load the fonts - otherwise everything breaks...)
       (frame as SectionNode)
         .findAll((node) => node.type === "TEXT")
         .forEach((textNode) => {
@@ -53,6 +83,7 @@ async function extractDataFromTestFrames(frames: readonly SceneNode[]) {
         .findAll((node) => node.type === "SECTION")
         .sort((a, b) => a.x - b.x) // ensures the sections are ordered left to right for reading purposes
         .forEach((section) => {
+          console.log("testing", section);
           if (section.name === "Product selector") {
             expectedResult = {
               id: section.name,
@@ -73,10 +104,11 @@ async function extractDataFromTestFrames(frames: readonly SceneNode[]) {
             steps.push({
               id: section.name,
               questionText: textNodes[0].characters,
-              selectedResponse: textNodes
-                .slice(1)
-                .filter((response) => response.fontWeight === 700)[0]
-                .characters,
+              selectedResponse:
+                textNodes
+                  .slice(1)
+                  .filter((response) => response.fontWeight === 700)[0]
+                  ?.characters || "any text",
             });
           }
         });
@@ -106,25 +138,28 @@ async function extractDataFromTestFrames(frames: readonly SceneNode[]) {
 }
 
 // Function to convert data to CSV format
-function convertToCSV(data: FrameData[]) {
+function convertToCSV(data: FrameData[], groupName: string = "") {
   let csvContent = "";
 
   // Add header row
-  const headers = Object.keys(data[0]).join(",");
+  const headers = COLUMN_HEADERS.join(",");
+  const emptyColumns = `"","","",""`;
   csvContent += headers + "\r\n";
 
   // Add data rows
-  data.forEach(({ name, steps, expectedResult }) => {
+  data.forEach(({ name, steps, expectedResult }, index) => {
     const stepsCombined = `"${steps
       .map((step) => Object.values(step).join(":"))
       .join("\r\n")}"`;
-    // TODO: concat all expected results
+
+    csvContent += `${index === 0 ? groupName : ""},`;
+
     const resultString = `"${expectedResult.result}"`;
 
     const values = Object.values({ name, stepsCombined, resultString }).join(
       ","
     );
-    csvContent += values + "\r\n";
+    csvContent += `${values},${emptyColumns},\r\n`;
   });
 
   return csvContent;
@@ -139,20 +174,36 @@ figma.ui.onmessage = async (msg: { type: string; count: number }) => {
   if (msg.type === "export") {
     const selectedFrames = figma.currentPage.selection;
     if (selectedFrames.length === 0) {
-      figma.notify("No frames selected.");
+      figma.notify("No frame selected.");
+      return;
+    } else if (selectedFrames.length > 1) {
+      figma.notify("Please select a single frame (for now)");
+      return;
+    }
+    const isTestGroupFrame = !testScenarioNameRegex.test(
+      selectedFrames[0].name
+    );
+    let data;
+    let filename = selectedFrames[0].name;
+    // TODO: parse test group frames first
+    if (isTestGroupFrame) {
+      data = await extractDataFromGroupFrame(selectedFrames);
+    } else {
+      data = await extractDataFromTestFrames(selectedFrames);
+    }
+
+    // const data = await extractDataFromTestFrames(selectedFrames);
+    if (!data) {
       return;
     }
 
-    // TODO: parse test group frames first
-    console.log(selectedFrames);
-
-    // const data = await extractDataFromTestFrames(selectedFrames);
-    // if (!data) {
-    //   return;
-    // }
-    // const csvContent = convertToCSV(data);
+    const csvContent = convertToCSV(data, isTestGroupFrame ? filename : "");
     // console.log(csvContent);
-    // figma.ui.postMessage({ type: "csvData", content: csvContent });
+    figma.ui.postMessage({
+      type: "csvData",
+      content: csvContent,
+      filename,
+    });
   }
 
   // Make sure to close the plugin when you're done. Otherwise the plugin will

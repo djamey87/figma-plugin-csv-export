@@ -1,0 +1,26 @@
+<h1>Test scenario -> CSV</h1>
+<p>Select a "test scenario" frame then click Export to generate a CSV file.</p>
+<button id="exportButton">Generate</button>
+
+<script>
+  // Send message to FigJam plugin script when export button is clicked
+  document
+    .getElementById("exportButton")
+    .addEventListener("click", function () {
+      parent.postMessage({ pluginMessage: { type: "export" } }, "*");
+    });
+
+    window.onmessage = event => {
+      const msg = event.data.pluginMessage;
+      if (msg.type === 'csvData') {
+        // Trigger file download
+        const blob = new Blob([msg.content], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'export.csv';
+        a.click();
+      }
+    };
+  </script>
+</script>

@@ -26,7 +26,7 @@ type ResultStep = {
 };
 
 // Function to extract data from selected frames
-async function extractDataFromFrames(frames: readonly SceneNode[]) {
+async function extractDataFromTestFrames(frames: readonly SceneNode[]) {
   // Array to store data from all frames
   const data: FrameData[] = [];
 
@@ -35,13 +35,7 @@ async function extractDataFromFrames(frames: readonly SceneNode[]) {
 
   // Iterate through selected frames
   for (const frame of frames) {
-    console.log(
-      `type: ${frame.type}, name:${frame.name}, children: ${JSON.stringify(
-        frame as SectionNode
-      )}`
-    );
     if (frame.type === "SECTION" && frame.name.includes("test scenario")) {
-      console.log("test: PASS");
       // Ensure it's a frame or group
       // Iterate through all text nodes in the frame
       (frame as SectionNode)
@@ -59,7 +53,6 @@ async function extractDataFromFrames(frames: readonly SceneNode[]) {
         .findAll((node) => node.type === "SECTION")
         .sort((a, b) => a.x - b.x) // ensures the sections are ordered left to right for reading purposes
         .forEach((section) => {
-          console.log("nodes?", section);
           if (section.name === "Product selector") {
             expectedResult = {
               id: section.name,
@@ -87,8 +80,6 @@ async function extractDataFromFrames(frames: readonly SceneNode[]) {
             });
           }
         });
-
-      console.log("scenario steps", steps, expectedResult);
 
       // Extract relevant data from the frame (just an example)
       const frameData = {
@@ -151,13 +142,17 @@ figma.ui.onmessage = async (msg: { type: string; count: number }) => {
       figma.notify("No frames selected.");
       return;
     }
-    const data = await extractDataFromFrames(selectedFrames);
-    if (!data) {
-      return;
-    }
-    const csvContent = convertToCSV(data);
-    console.log(csvContent);
-    figma.ui.postMessage({ type: "csvData", content: csvContent });
+
+    // TODO: parse test group frames first
+    console.log(selectedFrames);
+
+    // const data = await extractDataFromTestFrames(selectedFrames);
+    // if (!data) {
+    //   return;
+    // }
+    // const csvContent = convertToCSV(data);
+    // console.log(csvContent);
+    // figma.ui.postMessage({ type: "csvData", content: csvContent });
   }
 
   // Make sure to close the plugin when you're done. Otherwise the plugin will
